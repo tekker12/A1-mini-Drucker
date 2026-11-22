@@ -1,0 +1,1158 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A1 Mini CAD Anhänger-Studio</title>
+<style>
+  :root {
+    --bg: #111317;
+    --panel: #191d24;
+    --panel-2: #222832;
+    --border: #2e3644;
+    --text: #e6ebf2;
+    --muted: #8f9bb0;
+    --accent: #00ae42;
+    --accent-hover: #00c94d;
+    --warn: #e09f3e;
+    --danger: #e05252;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  header {
+    height: 48px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    flex-shrink: 0;
+  }
+  header h1 {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+  }
+  .badge {
+    font-size: 11px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 3px 8px;
+    border-radius: 4px;
+  }
+  .workspace {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+  }
+  .sidebar {
+    width: 340px;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    flex-shrink: 0;
+  }
+  .section {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .section-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .dropzone {
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    padding: 14px 10px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--muted);
+    cursor: pointer;
+    background: rgba(0, 0, 0, 0.2);
+    transition: border-color 0.15s;
+  }
+  .dropzone:hover, .dropzone.drag { border-color: var(--accent); color: var(--text); }
+  .templates {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  button {
+    background: #2b3240;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 7px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  button:hover { background: #353e4f; }
+  button.active { border-color: var(--accent); background: rgba(0, 174, 66, 0.18); }
+  button.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #08140c;
+    font-weight: 600;
+  }
+  button.primary:hover { background: var(--accent-hover); }
+  .control {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+  }
+  .control-head span:last-child {
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  input[type="range"] {
+    width: 100%;
+    accent-color: var(--accent);
+  }
+  select, input[type="color"] {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 5px 8px;
+    font-size: 12px;
+  }
+  .row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .row > * { flex: 1; }
+  .viewport-wrap {
+    flex: 1;
+    position: relative;
+    background: #0d0f13;
+    min-width: 0;
+  }
+  #canvas3d, #canvas2d {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  #canvas2d {
+    display: none;
+    background: #141820;
+  }
+  .toolbar {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    display: flex;
+    gap: 6px;
+    z-index: 10;
+  }
+  .hud {
+    position: absolute;
+    bottom: 12px;
+    left: 12px;
+    right: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    pointer-events: none;
+    gap: 12px;
+  }
+  .status-box {
+    background: rgba(17, 19, 23, 0.88);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 12px;
+    line-height: 1.5;
+    pointer-events: auto;
+  }
+  .warn { color: var(--warn); }
+  .ok { color: var(--accent); }
+  @media (max-width: 900px) {
+    .workspace { flex-direction: column-reverse; }
+    .sidebar { width: 100%; height: 48vh; border-right: none; border-top: 1px solid var(--border); }
+    .viewport-wrap { height: 52vh; }
+  }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/"
+  }
+}
+</script>
+</head>
+<body>
+<header>
+  <h1>A1 Mini CAD Anhänger-Studio</h1>
+  <div class="badge">Bambu Lab A1 mini (180x180 mm) | 0,4 mm Düse | Plane Rückseite Z=0</div>
+</header>
+
+<div class="workspace">
+  <aside class="sidebar">
+    <div class="section">
+      <div class="section-title">1. Motivquelle</div>
+      <div class="dropzone" id="dropzone">Bild hier ablegen oder klicken (PNG, JPG, WebP, SVG)</div>
+      <input type="file" id="fileInput" accept="image/*" hidden>
+      <div class="templates">
+        <button data-tpl="robbe" class="active">Glücksrobbe</button>
+        <button data-tpl="einhorn">Einhorn</button>
+        <button data-tpl="adler">Adlerkopf</button>
+        <button data-tpl="karate">Karate-Plakette</button>
+      </div>
+      <div class="row">
+        <select id="modeInput">
+          <option value="lineart">Line-Art / Zeichnung</option>
+          <option value="sobel">Foto zu Linien (Sobel)</option>
+        </select>
+        <button id="invertBtn">Invertieren: Aus</button>
+      </div>
+      <div class="control">
+        <div class="control-head"><span>Schwellenwert</span><span id="valThreshold">150</span></div>
+        <input type="range" id="threshold" min="30" max="235" value="150">
+      </div>
+      <div class="control">
+        <div class="control-head"><span>Linien-Verdickung (0,4 mm)</span><span id="valDilate">1 px</span></div>
+        <input type="range" id="dilate" min="0" max="4" value="1">
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">2. CAD-Form & Öse</div>
+      <div class="row">
+        <select id="shapeMode">
+          <option value="contour">Kontur-Anhänger (SDF)</option>
+          <option value="plaque">Abgerundete Plakette</option>
+        </select>
+        <select id="reliefMode">
+          <option value="raised">Erhabenes Relief</option>
+          <option value="engraved">Vertiefte Gravur</option>
+        </select>
+      </div>
+      <div class="control">
+        <div class="control-head"><span>Gesamtgröße (max. Seite)</span><span id="valSize">55 mm</span></div>
+        <input type="range" id="sizeMm" min="25" max="120" value="55">
+      </div>
+      <div class="control">
+        <div class="control-head"><span>Kontur-Randabstand</span><span id="valMargin">3.5 mm</span></div>
+        <input type="range" id="marginMm" min="1.2" max="8.0" step="0.1" value="3.5">
+      </div>
+      <div class="control">
+        <div class="control-head"><span>Kurvenglättung (Chaikin)</span><span id="valSmooth">3</span></div>
+        <input type="range" id="smoothIter" min="0" max="4" value="3">
+      </div>
+      <div class="control">
+        <div class="control-head"><span>Ösen-Lochdurchmesser</span><span id="valHole">4.2 mm</span></div>
+        <input type="range" id="holeMm" min="0" max="7.0" step="0.2" value="4.2">
+      </div>
+      <div class="control">
+        <div class="control-head"><span>Ösen-Position X</span><span id="valHoleX">0 %</span></div>
+        <input type="range" id="holeX" min="-35" max="35" value="0">
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">3. Druckhöhe & 0,4 mm Düse</div>
+      <div class="control">
+        <div class="control-head"><span>Basis-Dicke (plan ab Z=0)</span><span id="valBaseH">2.4 mm</span></div>
+        <input type="range" id="baseH" min="1.2" max="5.0" step="0.2" value="2.4">
+      </div>
+      <div class="control">
+        <div class="control-head"><span>Motiv-Höhe / Tiefe</span><span id="valReliefH">0.8 mm</span></div>
+        <input type="range" id="reliefH" min="0.4" max="2.0" step="0.2" value="0.8">
+      </div>
+      <div class="row">
+        <select id="layerH">
+          <option value="0.12">Schichthöhe 0,12 mm</option>
+          <option value="0.16">Schichthöhe 0,16 mm</option>
+          <option value="0.20" selected>Schichthöhe 0,20 mm</option>
+          <option value="0.28">Schichthöhe 0,28 mm</option>
+        </select>
+        <input type="color" id="colorBase" value="#e8ecf2" title="Basisfarbe">
+        <input type="color" id="colorMotif" value="#1e242c" title="Motivfarbe">
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">4. Export (Wasserdichte Binary STL)</div>
+      <button class="primary" id="exportSingle">Einzel-STL herunterladen</button>
+      <button id="exportAms">2-Farb-Export für AMS Lite (Basis + Motiv)</button>
+    </div>
+  </aside>
+
+  <main class="viewport-wrap">
+    <div class="toolbar">
+      <button id="view3dBtn" class="active">3D Studio</button>
+      <button id="view2dBtn">2D CAD-Vektoren</button>
+      <button id="wireBtn">Wireframe</button>
+      <button id="camResetBtn">Bauplatte</button>
+      <button id="camCloseBtn">Nahaufnahme</button>
+    </div>
+    <canvas id="canvas3d"></canvas>
+    <canvas id="canvas2d"></canvas>
+    <div class="hud">
+      <div class="status-box" id="infoBox">Initialisiere CAD-Engine...</div>
+      <div class="status-box" id="slicerBox">Bambu Studio: Wandgenerator Arachne aktivieren | Bügeln: Oberste Oberfläche</div>
+    </div>
+  </main>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/OrbitControls.js';
+
+const GRID = 220;
+const state = {
+  template: 'robbe',
+  image: null,
+  mode: 'lineart',
+  invert: false,
+  threshold: 150,
+  dilate: 1,
+  shapeMode: 'contour',
+  reliefMode: 'raised',
+  sizeMm: 55,
+  marginMm: 3.5,
+  smoothIter: 3,
+  holeMm: 4.2,
+  holeX: 0,
+  baseH: 2.4,
+  reliefH: 0.8,
+  layerH: 0.20,
+  colorBase: '#e8ecf2',
+  colorMotif: '#1e242c',
+  view: '3d',
+  wireframe: false
+};
+
+let baseGeo = null;
+let motifGeo = null;
+let lastCad = null;
+
+// --- THREE.JS SETUP ---
+const canvas3d = document.getElementById('canvas3d');
+const canvas2d = document.getElementById('canvas2d');
+const renderer = new THREE.WebGLRenderer({ canvas: canvas3d, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0d0f13);
+
+const camera = new THREE.PerspectiveCamera(40, 1, 0.5, 1000);
+camera.position.set(0, -95, 95);
+camera.up.set(0, 0, 1);
+
+const controls = new OrbitControls(camera, canvas3d);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.target.set(0, 0, 2);
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+const keyLight = new THREE.DirectionalLight(0xffffff, 1.15);
+keyLight.position.set(60, -80, 120);
+keyLight.castShadow = true;
+keyLight.shadow.mapSize.set(1024, 1024);
+scene.add(keyLight);
+
+const fillLight = new THREE.DirectionalLight(0x9ec5ff, 0.45);
+fillLight.position.set(-80, 60, 70);
+scene.add(fillLight);
+
+const rimLight = new THREE.DirectionalLight(0xffffff, 0.35);
+rimLight.position.set(0, 100, 40);
+scene.add(rimLight);
+
+// A1 mini 180x180 mm Build Plate
+const plateGeo = new THREE.PlaneGeometry(180, 180);
+const plateMat = new THREE.MeshStandardMaterial({ color: 0x1b2028, roughness: 0.85, metalness: 0.1 });
+const plate = new THREE.Mesh(plateGeo, plateMat);
+plate.position.z = -0.05;
+plate.receiveShadow = true;
+scene.add(plate);
+
+const gridHelper = new THREE.GridHelper(180, 18, 0x00ae42, 0x2c3442);
+gridHelper.rotation.x = Math.PI / 2;
+scene.add(gridHelper);
+
+const modelGroup = new THREE.Group();
+scene.add(modelGroup);
+
+function resize() {
+  const wrap = canvas3d.parentElement;
+  const w = wrap.clientWidth;
+  const h = wrap.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  canvas2d.width = w;
+  canvas2d.height = h;
+  if (state.view === '2d') draw2D();
+}
+window.addEventListener('resize', resize);
+
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  if (state.view === '3d') renderer.render(scene, camera);
+}
+animate();
+
+// --- BUILT-IN TEMPLATES ---
+function buildTemplateCanvas(name) {
+  const c = document.createElement('canvas');
+  c.width = 400; c.height = 400;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, 400, 400);
+  ctx.strokeStyle = '#000000';
+  ctx.fillStyle = '#000000';
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  if (name === 'robbe') {
+    ctx.lineWidth = 10;
+    ctx.beginPath();
+    ctx.moveTo(200, 75);
+    ctx.bezierCurveTo(265, 75, 275, 160, 278, 250);
+    ctx.bezierCurveTo(315, 250, 330, 295, 295, 318);
+    ctx.bezierCurveTo(260, 335, 150, 335, 125, 295);
+    ctx.bezierCurveTo(105, 255, 125, 165, 145, 120);
+    ctx.bezierCurveTo(155, 90, 170, 75, 200, 75);
+    ctx.stroke();
+    ctx.beginPath(); ctx.arc(178, 130, 7, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(222, 130, 7, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(200, 148, 8, 0, Math.PI * 2); ctx.fill();
+    ctx.lineWidth = 7;
+    ctx.beginPath(); ctx.arc(190, 162, 10, 0, Math.PI); ctx.stroke();
+    ctx.beginPath(); ctx.arc(210, 162, 10, 0, Math.PI); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(155, 215); ctx.quadraticCurveTo(135, 255, 175, 265); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(245, 215); ctx.quadraticCurveTo(265, 255, 225, 265); ctx.stroke();
+  } else if (name === 'einhorn') {
+    ctx.lineWidth = 9;
+    ctx.beginPath();
+    ctx.moveTo(175, 60); ctx.lineTo(195, 130); ctx.lineTo(165, 135); ctx.closePath(); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(165, 135);
+    ctx.bezierCurveTo(125, 155, 95, 205, 105, 235);
+    ctx.bezierCurveTo(118, 255, 150, 245, 170, 235);
+    ctx.bezierCurveTo(158, 275, 155, 310, 165, 335);
+    ctx.lineTo(265, 335);
+    ctx.bezierCurveTo(285, 280, 285, 190, 245, 140);
+    ctx.bezierCurveTo(230, 120, 210, 120, 195, 130);
+    ctx.stroke();
+    ctx.beginPath(); ctx.arc(165, 185, 8, 0, Math.PI * 2); ctx.fill();
+    ctx.lineWidth = 7;
+    ctx.beginPath(); ctx.moveTo(225, 155); ctx.quadraticCurveTo(265, 185, 235, 225); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(235, 225); ctx.quadraticCurveTo(275, 255, 240, 295); ctx.stroke();
+  } else if (name === 'adler') {
+    ctx.lineWidth = 10;
+    ctx.beginPath();
+    ctx.moveTo(120, 160);
+    ctx.bezierCurveTo(145, 95, 255, 95, 295, 160);
+    ctx.bezierCurveTo(320, 215, 295, 285, 240, 315);
+    ctx.lineTo(185, 330);
+    ctx.lineTo(165, 275);
+    ctx.bezierCurveTo(125, 275, 95, 240, 95, 205);
+    ctx.bezierCurveTo(95, 180, 108, 168, 120, 160);
+    ctx.stroke();
+    ctx.lineWidth = 8;
+    ctx.beginPath(); ctx.moveTo(120, 195); ctx.quadraticCurveTo(165, 175, 200, 190); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(185, 170); ctx.lineTo(235, 160); ctx.lineTo(220, 182); ctx.closePath(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(230, 215); ctx.quadraticCurveTo(270, 230, 255, 265); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(195, 235); ctx.quadraticCurveTo(235, 260, 215, 295); ctx.stroke();
+  } else {
+    ctx.lineWidth = 11;
+    ctx.strokeRect(85, 55, 230, 290);
+    ctx.lineWidth = 9;
+    ctx.beginPath(); ctx.arc(200, 130, 34, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(200, 164); ctx.lineTo(200, 245); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(135, 195); ctx.lineTo(200, 185); ctx.lineTo(275, 145); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(200, 245); ctx.lineTo(145, 315); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(200, 245); ctx.lineTo(285, 210); ctx.stroke();
+  }
+  return c;
+}
+
+// --- EUCLIDEAN DISTANCE TRANSFORM (Felzenszwalb-Huttenlocher 1D) ---
+function edt1d(f, n) {
+  const d = new Float32Array(n);
+  const v = new Int32Array(n);
+  const z = new Float32Array(n + 1);
+  let k = 0;
+  v[0] = 0;
+  z[0] = -1e20;
+  z[1] = 1e20;
+  for (let q = 1; q < n; q++) {
+    let s = ((f[q] + q * q) - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]);
+    while (s <= z[k]) {
+      k--;
+      s = ((f[q] + q * q) - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]);
+    }
+    k++;
+    v[k] = q;
+    z[k] = s;
+    z[k + 1] = 1e20;
+  }
+  k = 0;
+  for (let q = 0; q < n; q++) {
+    while (z[k + 1] < q) k++;
+    const diff = q - v[k];
+    d[q] = diff * diff + f[v[k]];
+  }
+  return d;
+}
+
+function computeSDF(mask, w, h) {
+  const INF = 1e12;
+  const distOut = new Float32Array(w * h);
+  const distIn = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) {
+    distOut[i] = mask[i] ? 0 : INF;
+    distIn[i] = mask[i] ? INF : 0;
+  }
+  const pass = (grid) => {
+    const col = new Float32Array(h);
+    for (let x = 0; x < w; x++) {
+      for (let y = 0; y < h; y++) col[y] = grid[y * w + x];
+      const d = edt1d(col, h);
+      for (let y = 0; y < h; y++) grid[y * w + x] = d[y];
+    }
+    const row = new Float32Array(w);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) row[x] = grid[y * w + x];
+      const d = edt1d(row, w);
+      for (let x = 0; x < w; x++) grid[y * w + x] = Math.sqrt(d[x]);
+    }
+  };
+  pass(distOut);
+  pass(distIn);
+  const sdf = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) sdf[i] = distOut[i] - distIn[i];
+  return sdf;
+}
+
+// Polynomial Smooth-Minimum
+function smin(a, b, k) {
+  const h = Math.max(k - Math.abs(a - b), 0.0) / k;
+  return Math.min(a, b) - h * h * k * 0.25;
+}
+
+// --- SUBPIXEL MARCHING SQUARES ---
+function marchingSquares(field, w, h, iso = 0) {
+  const segs = [];
+  const interp = (v1, v2) => {
+    const denom = v2 - v1;
+    return Math.abs(denom) < 1e-6 ? 0.5 : (iso - v1) / denom;
+  };
+  for (let y = 0; y < h - 1; y++) {
+    for (let x = 0; x < w - 1; x++) {
+      const v0 = field[y * w + x];
+      const v1 = field[y * w + x + 1];
+      const v2 = field[(y + 1) * w + x + 1];
+      const v3 = field[(y + 1) * w + x];
+      let idx = 0;
+      if (v0 < iso) idx |= 1;
+      if (v1 < iso) idx |= 2;
+      if (v2 < iso) idx |= 4;
+      if (v3 < iso) idx |= 8;
+      if (idx === 0 || idx === 15) continue;
+
+      const pTop = [x + interp(v0, v1), y];
+      const pRight = [x + 1, y + interp(v1, v2)];
+      const pBot = [x + interp(v3, v2), y + 1];
+      const pLeft = [x, y + interp(v0, v3)];
+
+      const add = (a, b) => segs.push([a, b]);
+      switch (idx) {
+        case 1: case 14: add(pLeft, pTop); break;
+        case 2: case 13: add(pTop, pRight); break;
+        case 3: case 12: add(pLeft, pRight); break;
+        case 4: case 11: add(pRight, pBot); break;
+        case 5: add(pLeft, pTop); add(pRight, pBot); break;
+        case 6: case 9: add(pTop, pBot); break;
+        case 7: case 8: add(pLeft, pBot); break;
+        case 10: add(pTop, pRight); add(pLeft, pBot); break;
+      }
+    }
+  }
+  return stitchSegments(segs);
+}
+
+function stitchSegments(segs) {
+  const key = (p) => `${Math.round(p[0] * 100)},${Math.round(p[1] * 100)}`;
+  const adj = new Map();
+  segs.forEach((s, i) => {
+    const k0 = key(s[0]), k1 = key(s[1]);
+    if (!adj.has(k0)) adj.set(k0, []);
+    if (!adj.has(k1)) adj.set(k1, []);
+    adj.get(k0).push({ i, p: s[1], k: k1 });
+    adj.get(k1).push({ i, p: s[0], k: k0 });
+  });
+  const used = new Uint8Array(segs.length);
+  const loops = [];
+  for (let i = 0; i < segs.length; i++) {
+    if (used[i]) continue;
+    used[i] = 1;
+    const loop = [segs[i][0], segs[i][1]];
+    let currK = key(segs[i][1]);
+    const startK = key(segs[i][0]);
+    while (currK !== startK) {
+      const list = adj.get(currK) || [];
+      const next = list.find(e => !used[e.i]);
+      if (!next) break;
+      used[next.i] = 1;
+      loop.push(next.p);
+      currK = next.k;
+    }
+    if (loop.length >= 6) loops.push(loop);
+  }
+  return loops;
+}
+
+// --- RDP + CHAIKIN SMOOTHING ---
+function rdp(pts, eps) {
+  if (pts.length < 4) return pts;
+  let maxD = 0, idx = 0;
+  const a = pts[0], b = pts[pts.length - 1];
+  const dx = b[0] - a[0], dy = b[1] - a[1];
+  const len = Math.hypot(dx, dy) || 1;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const d = Math.abs(dy * pts[i][0] - dx * pts[i][1] + b[0] * a[1] - b[1] * a[0]) / len;
+    if (d > maxD) { maxD = d; idx = i; }
+  }
+  if (maxD > eps) {
+    const left = rdp(pts.slice(0, idx + 1), eps);
+    const right = rdp(pts.slice(idx), eps);
+    return left.slice(0, -1).concat(right);
+  }
+  return [a, b];
+}
+
+function chaikinClosed(pts, iter) {
+  let curr = pts;
+  for (let k = 0; k < iter; k++) {
+    const next = [];
+    const n = curr.length;
+    for (let i = 0; i < n; i++) {
+      const p0 = curr[i];
+      const p1 = curr[(i + 1) % n];
+      next.push([0.75 * p0[0] + 0.25 * p1[0], 0.75 * p0[1] + 0.25 * p1[1]]);
+      next.push([0.25 * p0[0] + 0.75 * p1[0], 0.25 * p0[1] + 0.75 * p1[1]]);
+    }
+    curr = next;
+  }
+  return curr;
+}
+
+function polygonArea(pts) {
+  let a = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const p0 = pts[i], p1 = pts[(i + 1) % pts.length];
+    a += p0[0] * p1[1] - p1[0] * p0[1];
+  }
+  return a * 0.5;
+}
+
+function pointInPoly(pt, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i][0], yi = poly[i][1];
+    const xj = poly[j][0], yj = poly[j][1];
+    const intersect = ((yi > pt[1]) !== (yj > pt[1])) &&
+      (pt[0] < (xj - xi) * (pt[1] - yi) / (yj - yi + 1e-12) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+// --- WATERTIGHT CUSTOM CAD EXTRUDER (Flat Bottom Z=z0) ---
+function extrudePolygons(shapes, z0, z1) {
+  const positions = [];
+  const pushTri = (a, b, c) => {
+    positions.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]);
+  };
+
+  for (const s of shapes) {
+    let outer = s.outer.map(p => new THREE.Vector2(p[0], p[1]));
+    if (THREE.ShapeUtils.isClockWise(outer)) outer.reverse();
+    const holes = (s.holes || []).map(h => {
+      const hv = h.map(p => new THREE.Vector2(p[0], p[1]));
+      if (!THREE.ShapeUtils.isClockWise(hv)) hv.reverse();
+      return hv;
+    });
+
+    const faces = THREE.ShapeUtils.triangulateShape(outer, holes);
+    const allPts = outer.concat(...holes);
+
+    for (const [i0, i1, i2] of faces) {
+      const p0 = allPts[i0], p1 = allPts[i1], p2 = allPts[i2];
+      pushTri([p0.x, p0.y, z0], [p2.x, p2.y, z0], [p1.x, p1.y, z0]);
+      pushTri([p0.x, p0.y, z1], [p1.x, p1.y, z1], [p2.x, p2.y, z1]);
+    }
+
+    const addWall = (loop) => {
+      for (let i = 0; i < loop.length; i++) {
+        const a = loop[i];
+        const b = loop[(i + 1) % loop.length];
+        pushTri([a.x, a.y, z0], [b.x, b.y, z0], [b.x, b.y, z1]);
+        pushTri([a.x, a.y, z0], [b.x, b.y, z1], [a.x, a.y, z1]);
+      }
+    };
+    addWall(outer);
+    holes.forEach(addWall);
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.computeVertexNormals();
+  return geo;
+}
+
+function groupContoursToShapes(loops) {
+  const sorted = loops
+    .map(l => ({ pts: l, area: Math.abs(polygonArea(l)) }))
+    .filter(l => l.area > 0.25)
+    .sort((a, b) => b.area - a.area);
+
+  const shapes = [];
+  const usedAsHole = new Set();
+  for (let i = 0; i < sorted.length; i++) {
+    if (usedAsHole.has(i)) continue;
+    const outer = sorted[i].pts;
+    const holes = [];
+    for (let j = i + 1; j < sorted.length; j++) {
+      if (usedAsHole.has(j)) continue;
+      if (pointInPoly(sorted[j].pts[0], outer)) {
+        let nestedInsideHole = false;
+        for (const h of holes) {
+          if (pointInPoly(sorted[j].pts[0], h)) { nestedInsideHole = true; break; }
+        }
+        if (!nestedInsideHole) {
+          holes.push(sorted[j].pts);
+          usedAsHole.add(j);
+        }
+      }
+    }
+    shapes.push({ outer, holes });
+  }
+  return shapes;
+}
+
+// --- MAIN CAD PIPELINE ---
+function rebuildModel() {
+  const src = state.image || buildTemplateCanvas(state.template);
+  const work = document.createElement('canvas');
+  work.width = GRID; work.height = GRID;
+  const ctx = work.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, GRID, GRID);
+
+  const pad = 34;
+  const avail = GRID - pad * 2;
+  const ratio = Math.min(avail / src.width, avail / src.height);
+  const dw = src.width * ratio;
+  const dh = src.height * ratio;
+  ctx.drawImage(src, (GRID - dw) / 2, (GRID - dh) / 2 + 8, dw, dh);
+
+  const imgData = ctx.getImageData(0, 0, GRID, GRID).data;
+  const gray = new Float32Array(GRID * GRID);
+  for (let i = 0; i < GRID * GRID; i++) {
+    gray[i] = 0.299 * imgData[i * 4] + 0.587 * imgData[i * 4 + 1] + 0.114 * imgData[i * 4 + 2];
+  }
+
+  let motifMask = new Uint8Array(GRID * GRID);
+  if (state.mode === 'sobel') {
+    for (let y = 1; y < GRID - 1; y++) {
+      for (let x = 1; x < GRID - 1; x++) {
+        const gx = -gray[(y - 1) * GRID + x - 1] + gray[(y - 1) * GRID + x + 1]
+                 - 2 * gray[y * GRID + x - 1] + 2 * gray[y * GRID + x + 1]
+                 - gray[(y + 1) * GRID + x - 1] + gray[(y + 1) * GRID + x + 1];
+        const gy = -gray[(y - 1) * GRID + x - 1] - 2 * gray[(y - 1) * GRID + x] - gray[(y - 1) * GRID + x + 1]
+                 + gray[(y + 1) * GRID + x - 1] + 2 * gray[(y + 1) * GRID + x] + gray[(y + 1) * GRID + x + 1];
+        const mag = Math.hypot(gx, gy);
+        motifMask[y * GRID + x] = mag > (255 - state.threshold) * 1.4 ? 1 : 0;
+      }
+    }
+  } else {
+    for (let i = 0; i < GRID * GRID; i++) {
+      const dark = gray[i] < state.threshold;
+      motifMask[i] = state.invert ? (dark ? 0 : 1) : (dark ? 1 : 0);
+    }
+  }
+
+  // Dilatation for 0.4mm nozzle printability
+  for (let d = 0; d < state.dilate; d++) {
+    const next = new Uint8Array(motifMask);
+    for (let y = 1; y < GRID - 1; y++) {
+      for (let x = 1; x < GRID - 1; x++) {
+        const i = y * GRID + x;
+        if (motifMask[i]) {
+          next[i - 1] = next[i + 1] = next[i - GRID] = next[i + GRID] = 1;
+        }
+      }
+    }
+    motifMask = next;
+  }
+
+  // Bounding box of motif
+  let minX = GRID, maxX = 0, minY = GRID, maxY = 0;
+  for (let y = 0; y < GRID; y++) {
+    for (let x = 0; x < GRID; x++) {
+      if (motifMask[y * GRID + x]) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  if (maxX <= minX || maxY <= minY) return;
+
+  const spanPx = Math.max(maxX - minX, maxY - minY);
+  const mmPerPx = state.sizeMm / (spanPx + 24);
+  const marginPx = state.marginMm / mmPerPx;
+
+  // Flood fill background to get solid silhouette for outer contour
+  const bg = new Uint8Array(GRID * GRID);
+  const q = [0];
+  bg[0] = 1;
+  for (let qi = 0; qi < q.length; qi++) {
+    const idx = q[qi];
+    const x = idx % GRID, y = (idx / GRID) | 0;
+    const nbrs = [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]];
+    for (const [nx, ny] of nbrs) {
+      if (nx >= 0 && nx < GRID && ny >= 0 && ny < GRID) {
+        const ni = ny * GRID + nx;
+        if (!bg[ni] && !motifMask[ni]) { bg[ni] = 1; q.push(ni); }
+      }
+    }
+  }
+  const solidMask = new Uint8Array(GRID * GRID);
+  for (let i = 0; i < GRID * GRID; i++) solidMask[i] = bg[i] ? 0 : 1;
+
+  const bodySdf = computeSDF(solidMask, GRID, GRID);
+  const outerSdf = new Float32Array(GRID * GRID);
+
+  const cx = (minX + maxX) * 0.5;
+  const cy = (minY + maxY) * 0.5;
+  const hw = (maxX - minX) * 0.5 + marginPx;
+  const hh = (maxY - minY) * 0.5 + marginPx;
+  const cornerR = Math.min(hw, hh) * 0.2;
+
+  const holeRpx = (state.holeMm * 0.5) / mmPerPx;
+  const eyeletOuterR = holeRpx + (2.4 / mmPerPx);
+  const eyeletX = cx + (state.holeX / 100) * (maxX - minX);
+  const eyeletY = minY - marginPx * 0.7 - holeRpx * 0.3;
+
+  for (let y = 0; y < GRID; y++) {
+    for (let x = 0; x < GRID; x++) {
+      let dBody;
+      if (state.shapeMode === 'plaque') {
+        const qx = Math.abs(x - cx) - (hw - cornerR);
+        const qy = Math.abs(y - cy) - (hh - cornerR);
+        dBody = Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - cornerR;
+      } else {
+        dBody = bodySdf[y * GRID + x] - marginPx;
+      }
+      if (state.holeMm > 0) {
+        const dEye = Math.hypot(x - eyeletX, y - eyeletY) - eyeletOuterR;
+        dBody = smin(dBody, dEye, 4.5);
+      }
+      outerSdf[y * GRID + x] = dBody;
+    }
+  }
+
+  const toMm = (p) => [(p[0] - cx) * mmPerPx, -(p[1] - cy) * mmPerPx];
+
+  // Outer contour vectorization
+  const rawOuter = marchingSquares(outerSdf, GRID, GRID, 0);
+  const smoothOuter = rawOuter
+    .map(l => chaikinClosed(rdp(l, 0.7), state.smoothIter).map(toMm))
+    .sort((a, b) => Math.abs(polygonArea(b)) - Math.abs(polygonArea(a)));
+
+  if (!smoothOuter.length) return;
+  const mainOuter = smoothOuter[0];
+
+  // 64-segment mathematical eyelet hole
+  const baseHoles = [];
+  if (state.holeMm > 0) {
+    const holeLoop = [];
+    const hx = (eyeletX - cx) * mmPerPx;
+    const hy = -(eyeletY - cy) * mmPerPx;
+    const hr = state.holeMm * 0.5;
+    for (let i = 0; i < 64; i++) {
+      const a = (i / 64) * Math.PI * 2;
+      holeLoop.push([hx + Math.cos(a) * hr, hy + Math.sin(a) * hr]);
+    }
+    baseHoles.push(holeLoop);
+  }
+
+  // Motif vectorization via SDF for smooth subpixel contours
+  const motifSdf = computeSDF(motifMask, GRID, GRID);
+  const rawMotif = marchingSquares(motifSdf, GRID, GRID, 0.35);
+  const smoothMotif = rawMotif.map(l => chaikinClosed(rdp(l, 0.55), Math.max(1, state.smoothIter - 1)).map(toMm));
+  const motifShapes = groupContoursToShapes(smoothMotif);
+
+  // Build 3D Geometry (100% flat bottom at Z = 0)
+  while (modelGroup.children.length) modelGroup.remove(modelGroup.children[0]);
+  if (baseGeo) baseGeo.dispose();
+  if (motifGeo) motifGeo.dispose();
+
+  if (state.reliefMode === 'raised') {
+    baseGeo = extrudePolygons([{ outer: mainOuter, holes: baseHoles }], 0, state.baseH);
+    motifGeo = extrudePolygons(motifShapes, state.baseH, state.baseH + state.reliefH);
+  } else {
+    const lowerH = Math.max(0.6, state.baseH - state.reliefH);
+    baseGeo = extrudePolygons([{ outer: mainOuter, holes: baseHoles }], 0, lowerH);
+    const upperHoles = baseHoles.concat(motifShapes.map(s => s.outer));
+    motifGeo = extrudePolygons([{ outer: mainOuter, holes: upperHoles }], lowerH, state.baseH);
+  }
+
+  const matBase = new THREE.MeshStandardMaterial({
+    color: state.colorBase, roughness: 0.45, metalness: 0.05, wireframe: state.wireframe
+  });
+  const matMotif = new THREE.MeshStandardMaterial({
+    color: state.colorMotif, roughness: 0.4, metalness: 0.08, wireframe: state.wireframe
+  });
+
+  const baseMesh = new THREE.Mesh(baseGeo, matBase);
+  baseMesh.castShadow = true; baseMesh.receiveShadow = true;
+  const motifMesh = new THREE.Mesh(motifGeo, matMotif);
+  motifMesh.castShadow = true; motifMesh.receiveShadow = true;
+  modelGroup.add(baseMesh, motifMesh);
+
+  // Compute physical dimensions & slicer metadata
+  baseGeo.computeBoundingBox();
+  const bb = baseGeo.boundingBox;
+  const dimX = (bb.max.x - bb.min.x).toFixed(1);
+  const dimY = (bb.max.y - bb.min.y).toFixed(1);
+  const totalZ = (state.reliefMode === 'raised' ? state.baseH + state.reliefH : state.baseH).toFixed(2);
+  const swapZ = state.reliefMode === 'raised' ? state.baseH : Math.max(0.6, state.baseH - state.reliefH);
+  const swapLayer = Math.round(swapZ / state.layerH) + 1;
+  const minFeatureMm = (mmPerPx * (1 + state.dilate)).toFixed(2);
+  const nozzleWarn = parseFloat(minFeatureMm) < 0.42
+    ? `<span class="warn">Warnung: Feinste Linie ca. ${minFeatureMm} mm (&lt; 0,42 mm Düse) - Verdickung erhöhen</span>`
+    : `<span class="ok">0,4 mm Düsen-Check: OK (min. Linie ca. ${minFeatureMm} mm)</span>`;
+
+  document.getElementById('infoBox').innerHTML =
+    `Maße: ${dimX} x ${dimY} x ${totalZ} mm | Farbwechsel ab Schicht ${swapLayer} (Z = ${swapZ.toFixed(2)} mm)<br>${nozzleWarn}`;
+
+  lastCad = { work, mainOuter, baseHoles, motifShapes, cx, cy, mmPerPx };
+  if (state.view === '2d') draw2D();
+}
+
+// --- 2D CAD VECTOR OVERLAY ---
+function draw2D() {
+  if (!lastCad) return;
+  const ctx = canvas2d.getContext('2d');
+  const w = canvas2d.width, h = canvas2d.height;
+  ctx.clearRect(0, 0, w, h);
+
+  const scale = Math.min(w, h) * 0.72 / (state.sizeMm * 1.35);
+  const ox = w / 2, oy = h / 2;
+
+  ctx.strokeStyle = '#263040';
+  ctx.lineWidth = 1;
+  const step = 10 * scale;
+  for (let x = ox % step; x < w; x += step) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
+  for (let y = oy % step; y < h; y += step) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
+
+  const drawLoop = (pts, color, lw) => {
+    ctx.beginPath();
+    pts.forEach((p, i) => {
+      const px = ox + p[0] * scale;
+      const py = oy - p[1] * scale;
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    });
+    ctx.closePath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lw;
+    ctx.stroke();
+  };
+
+  drawLoop(lastCad.mainOuter, '#00ae42', 2.2);
+  lastCad.baseHoles.forEach(hole => drawLoop(hole, '#e09f3e', 2.0));
+  lastCad.motifShapes.forEach(s => {
+    drawLoop(s.outer, '#4ea8ff', 1.6);
+    s.holes.forEach(hl => drawLoop(hl, '#8cc8ff', 1.2));
+  });
+}
+
+// --- BINARY STL EXPORT ---
+function geometriesToBinarySTL(geos) {
+  let triCount = 0;
+  geos.forEach(g => { triCount += g.attributes.position.count / 3; });
+  const buf = new ArrayBuffer(84 + triCount * 50);
+  const view = new DataView(buf);
+  view.setUint32(80, triCount, true);
+
+  let offset = 84;
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+  const ab = new THREE.Vector3(), ac = new THREE.Vector3(), n = new THREE.Vector3();
+
+  for (const g of geos) {
+    const pos = g.attributes.position;
+    for (let i = 0; i < pos.count; i += 3) {
+      a.fromBufferAttribute(pos, i);
+      b.fromBufferAttribute(pos, i + 1);
+      c.fromBufferAttribute(pos, i + 2);
+      ab.subVectors(b, a);
+      ac.subVectors(c, a);
+      n.crossVectors(ab, ac).normalize();
+      view.setFloat32(offset, n.x, true); offset += 4;
+      view.setFloat32(offset, n.y, true); offset += 4;
+      view.setFloat32(offset, n.z, true); offset += 4;
+      for (const v of [a, b, c]) {
+        view.setFloat32(offset, v.x, true); offset += 4;
+        view.setFloat32(offset, v.y, true); offset += 4;
+        view.setFloat32(offset, v.z, true); offset += 4;
+      }
+      view.setUint16(offset, 0, true); offset += 2;
+    }
+  }
+  return new Blob([buf], { type: 'application/octet-stream' });
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// --- UI BINDINGS ---
+const bindRange = (id, key, labelId, suffix, isFloat = false) => {
+  const el = document.getElementById(id);
+  el.addEventListener('input', () => {
+    state[key] = isFloat ? parseFloat(el.value) : parseInt(el.value, 10);
+    document.getElementById(labelId).textContent = `${el.value}${suffix}`;
+    rebuildModel();
+  });
+};
+
+bindRange('threshold', 'threshold', 'valThreshold', '');
+bindRange('dilate', 'dilate', 'valDilate', ' px');
+bindRange('sizeMm', 'sizeMm', 'valSize', ' mm');
+bindRange('marginMm', 'marginMm', 'valMargin', ' mm', true);
+bindRange('smoothIter', 'smoothIter', 'valSmooth', '');
+bindRange('holeMm', 'holeMm', 'valHole', ' mm', true);
+bindRange('holeX', 'holeX', 'valHoleX', ' %');
+bindRange('baseH', 'baseH', 'valBaseH', ' mm', true);
+bindRange('reliefH', 'reliefH', 'valReliefH', ' mm', true);
+
+document.getElementById('modeInput').addEventListener('change', e => { state.mode = e.target.value; rebuildModel(); });
+document.getElementById('shapeMode').addEventListener('change', e => { state.shapeMode = e.target.value; rebuildModel(); });
+document.getElementById('reliefMode').addEventListener('change', e => { state.reliefMode = e.target.value; rebuildModel(); });
+document.getElementById('layerH').addEventListener('change', e => { state.layerH = parseFloat(e.target.value); rebuildModel(); });
+document.getElementById('colorBase').addEventListener('input', e => { state.colorBase = e.target.value; rebuildModel(); });
+document.getElementById('colorMotif').addEventListener('input', e => { state.colorMotif = e.target.value; rebuildModel(); });
+
+document.getElementById('invertBtn').addEventListener('click', e => {
+  state.invert = !state.invert;
+  e.target.textContent = `Invertieren: ${state.invert ? 'Ein' : 'Aus'}`;
+  rebuildModel();
+});
+
+document.querySelectorAll('[data-tpl]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-tpl]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.template = btn.dataset.tpl;
+    state.image = null;
+    rebuildModel();
+  });
+});
+
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const loadFile = (file) => {
+  if (!file) return;
+  const img = new Image();
+  img.onload = () => { state.image = img; rebuildModel(); };
+  img.src = URL.createObjectURL(file);
+};
+dropzone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', e => loadFile(e.target.files[0]));
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
+dropzone.addEventListener('drop', e => { e.preventDefault(); dropzone.classList.remove('drag'); loadFile(e.dataTransfer.files[0]); });
+
+document.getElementById('view3dBtn').addEventListener('click', () => {
+  state.view = '3d';
+  canvas3d.style.display = 'block';
+  canvas2d.style.display = 'none';
+  document.getElementById('view3dBtn').classList.add('active');
+  document.getElementById('view2dBtn').classList.remove('active');
+});
+
+document.getElementById('view2dBtn').addEventListener('click', () => {
+  state.view = '2d';
+  canvas3d.style.display = 'none';
+  canvas2d.style.display = 'block';
+  document.getElementById('view2dBtn').classList.add('active');
+  document.getElementById('view3dBtn').classList.remove('active');
+  draw2D();
+});
+
+document.getElementById('wireBtn').addEventListener('click', e => {
+  state.wireframe = !state.wireframe;
+  e.target.classList.toggle('active', state.wireframe);
+  rebuildModel();
+});
+
+document.getElementById('camResetBtn').addEventListener('click', () => {
+  camera.position.set(0, -140, 140);
+  controls.target.set(0, 0, 2);
+});
+
+document.getElementById('camCloseBtn').addEventListener('click', () => {
+  camera.position.set(0, -45, 55);
+  controls.target.set(0, 0, 2);
+});
+
+document.getElementById('exportSingle').addEventListener('click', () => {
+  if (!baseGeo || !motifGeo) return;
+  downloadBlob(geometriesToBinarySTL([baseGeo, motifGeo]), 'anhaenger_a1mini.stl');
+});
+
+document.getElementById('exportAms').addEventListener('click', () => {
+  if (!baseGeo || !motifGeo) return;
+  downloadBlob(geometriesToBinarySTL([baseGeo]), 'anhaenger_1_basis.stl');
+  setTimeout(() => downloadBlob(geometriesToBinarySTL([motifGeo]), 'anhaenger_2_motiv.stl'), 300);
+});
+
+resize();
+rebuildModel();
+</script>
+</body>
+</html>
