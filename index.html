@@ -92,6 +92,7 @@
     cursor: pointer;
     background: rgba(0, 0, 0, 0.2);
     transition: border-color 0.15s;
+    word-break: break-word;
   }
   .dropzone:hover, .dropzone.drag { border-color: var(--accent); color: var(--text); }
   .templates {
@@ -237,7 +238,7 @@
       </div>
       <div class="control">
         <div class="control-head"><span>Schwellenwert</span><span id="valThreshold">150</span></div>
-        <input type="range" id="threshold" min="30" max="235" value="150">
+        <input type="range" id="threshold" min="20" max="240" value="150">
       </div>
       <div class="control">
         <div class="control-head"><span>Linien-Verdickung (0,4 mm)</span><span id="valDilate">1 px</span></div>
@@ -329,7 +330,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/OrbitControls.js';
 
-const GRID = 220;
+const GRID = 256;
 const state = {
   template: 'robbe',
   image: null,
@@ -369,7 +370,7 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0d0f13);
 
 const camera = new THREE.PerspectiveCamera(40, 1, 0.5, 1000);
-camera.position.set(0, -95, 95);
+camera.position.set(0, -85, 90);
 camera.up.set(0, 0, 1);
 
 const controls = new OrbitControls(camera, canvas3d);
@@ -392,7 +393,6 @@ const rimLight = new THREE.DirectionalLight(0xffffff, 0.35);
 rimLight.position.set(0, 100, 40);
 scene.add(rimLight);
 
-// A1 mini 180x180 mm Build Plate
 const plateGeo = new THREE.PlaneGeometry(180, 180);
 const plateMat = new THREE.MeshStandardMaterial({ color: 0x1b2028, roughness: 0.85, metalness: 0.1 });
 const plate = new THREE.Mesh(plateGeo, plateMat);
@@ -503,7 +503,7 @@ function buildTemplateCanvas(name) {
   return c;
 }
 
-// --- EUCLIDEAN DISTANCE TRANSFORM (Felzenszwalb-Huttenlocher 1D) ---
+// --- EUCLIDEAN DISTANCE TRANSFORM ---
 function edt1d(f, n) {
   const d = new Float32Array(n);
   const v = new Int32Array(n);
@@ -561,7 +561,6 @@ function computeSDF(mask, w, h) {
   return sdf;
 }
 
-// Polynomial Smooth-Minimum
 function smin(a, b, k) {
   const h = Math.max(k - Math.abs(a - b), 0.0) / k;
   return Math.min(a, b) - h * h * k * 0.25;
@@ -572,7 +571,8 @@ function marchingSquares(field, w, h, iso = 0) {
   const segs = [];
   const interp = (v1, v2) => {
     const denom = v2 - v1;
-    return Math.abs(denom) < 1e-6 ? 0.5 : (iso - v1) / denom;
+    if (Math.abs(denom) < 1e-6) return 0.5;
+    return Math.max(0.001, Math.min(0.999, (iso - v1) / denom));
   };
   for (let y = 0; y < h - 1; y++) {
     for (let x = 0; x < w - 1; x++) {
@@ -609,10 +609,11 @@ function marchingSquares(field, w, h, iso = 0) {
 }
 
 function stitchSegments(segs) {
-  const key = (p) => `${Math.round(p[0] * 100)},${Math.round(p[1] * 100)}`;
+  const key = (p) => `${Math.round(p[0] * 1000)},${Math.round(p[1] * 1000)}`;
   const adj = new Map();
   segs.forEach((s, i) => {
     const k0 = key(s[0]), k1 = key(s[1]);
+    if (k0 === k1) return;
     if (!adj.has(k0)) adj.set(k0, []);
     if (!adj.has(k1)) adj.set(k1, []);
     adj.get(k0).push({ i, p: s[1], k: k1 });
@@ -634,31 +635,51 @@ function stitchSegments(segs) {
       loop.push(next.p);
       currK = next.k;
     }
-    if (loop.length >= 6) loops.push(loop);
+    if (currK === startK && loop.length > 3) {
+      loop.pop();
+      loops.push(loop);
+    }
   }
   return loops;
 }
 
-// --- RDP + CHAIKIN SMOOTHING ---
-function rdp(pts, eps) {
-  if (pts.length < 4) return pts;
+// --- CLOSED-LOOP RDP + CHAIKIN SMOOTHING ---
+function rdpOpen(pts, eps) {
+  if (pts.length <= 2) return pts;
   let maxD = 0, idx = 0;
   const a = pts[0], b = pts[pts.length - 1];
   const dx = b[0] - a[0], dy = b[1] - a[1];
-  const len = Math.hypot(dx, dy) || 1;
+  const len = Math.hypot(dx, dy);
   for (let i = 1; i < pts.length - 1; i++) {
-    const d = Math.abs(dy * pts[i][0] - dx * pts[i][1] + b[0] * a[1] - b[1] * a[0]) / len;
+    const d = len < 1e-9
+      ? Math.hypot(pts[i][0] - a[0], pts[i][1] - a[1])
+      : Math.abs(dy * pts[i][0] - dx * pts[i][1] + b[0] * a[1] - b[1] * a[0]) / len;
     if (d > maxD) { maxD = d; idx = i; }
   }
   if (maxD > eps) {
-    const left = rdp(pts.slice(0, idx + 1), eps);
-    const right = rdp(pts.slice(idx), eps);
+    const left = rdpOpen(pts.slice(0, idx + 1), eps);
+    const right = rdpOpen(pts.slice(idx), eps);
     return left.slice(0, -1).concat(right);
   }
   return [a, b];
 }
 
+function rdpClosed(pts, eps) {
+  if (pts.length < 4) return pts;
+  let maxD = -1, splitIdx = 1;
+  const p0 = pts[0];
+  for (let i = 1; i < pts.length; i++) {
+    const d = Math.hypot(pts[i][0] - p0[0], pts[i][1] - p0[1]);
+    if (d > maxD) { maxD = d; splitIdx = i; }
+  }
+  if (maxD < 1e-6) return [];
+  const half1 = rdpOpen(pts.slice(0, splitIdx + 1), eps);
+  const half2 = rdpOpen(pts.slice(splitIdx).concat([p0]), eps);
+  return half1.slice(0, -1).concat(half2.slice(0, -1));
+}
+
 function chaikinClosed(pts, iter) {
+  if (pts.length < 3) return pts;
   let curr = pts;
   for (let k = 0; k < iter; k++) {
     const next = [];
@@ -695,7 +716,17 @@ function pointInPoly(pt, poly) {
   return inside;
 }
 
-// --- WATERTIGHT CUSTOM CAD EXTRUDER (Flat Bottom Z=z0) ---
+function isLoopSafeHole(loop, outer, holeCenter, holeRadius) {
+  for (let i = 0; i < loop.length; i += Math.max(1, Math.floor(loop.length / 16))) {
+    if (!pointInPoly(loop[i], outer)) return false;
+    if (holeCenter && Math.hypot(loop[i][0] - holeCenter[0], loop[i][1] - holeCenter[1]) < holeRadius + 0.4) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// --- WATERTIGHT CUSTOM CAD EXTRUDER ---
 function extrudePolygons(shapes, z0, z1) {
   const positions = [];
   const pushTri = (a, b, c) => {
@@ -703,13 +734,16 @@ function extrudePolygons(shapes, z0, z1) {
   };
 
   for (const s of shapes) {
+    if (!s.outer || s.outer.length < 3 || Math.abs(polygonArea(s.outer)) < 0.02) continue;
     let outer = s.outer.map(p => new THREE.Vector2(p[0], p[1]));
     if (THREE.ShapeUtils.isClockWise(outer)) outer.reverse();
-    const holes = (s.holes || []).map(h => {
-      const hv = h.map(p => new THREE.Vector2(p[0], p[1]));
-      if (!THREE.ShapeUtils.isClockWise(hv)) hv.reverse();
-      return hv;
-    });
+    const holes = (s.holes || [])
+      .filter(h => h.length >= 3 && Math.abs(polygonArea(h)) >= 0.02)
+      .map(h => {
+        const hv = h.map(p => new THREE.Vector2(p[0], p[1]));
+        if (!THREE.ShapeUtils.isClockWise(hv)) hv.reverse();
+        return hv;
+      });
 
     const faces = THREE.ShapeUtils.triangulateShape(outer, holes);
     const allPts = outer.concat(...holes);
@@ -741,7 +775,7 @@ function extrudePolygons(shapes, z0, z1) {
 function groupContoursToShapes(loops) {
   const sorted = loops
     .map(l => ({ pts: l, area: Math.abs(polygonArea(l)) }))
-    .filter(l => l.area > 0.25)
+    .filter(l => l.pts.length >= 3 && l.area > 0.15)
     .sort((a, b) => b.area - a.area);
 
   const shapes = [];
@@ -777,12 +811,12 @@ function rebuildModel() {
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, GRID, GRID);
 
-  const pad = 34;
+  const pad = 50;
   const avail = GRID - pad * 2;
   const ratio = Math.min(avail / src.width, avail / src.height);
   const dw = src.width * ratio;
   const dh = src.height * ratio;
-  ctx.drawImage(src, (GRID - dw) / 2, (GRID - dh) / 2 + 8, dw, dh);
+  ctx.drawImage(src, (GRID - dw) / 2, (GRID - dh) / 2 + 10, dw, dh);
 
   const imgData = ctx.getImageData(0, 0, GRID, GRID).data;
   const gray = new Float32Array(GRID * GRID);
@@ -792,15 +826,26 @@ function rebuildModel() {
 
   let motifMask = new Uint8Array(GRID * GRID);
   if (state.mode === 'sobel') {
+    const blurred = new Float32Array(GRID * GRID);
     for (let y = 1; y < GRID - 1; y++) {
       for (let x = 1; x < GRID - 1; x++) {
-        const gx = -gray[(y - 1) * GRID + x - 1] + gray[(y - 1) * GRID + x + 1]
-                 - 2 * gray[y * GRID + x - 1] + 2 * gray[y * GRID + x + 1]
-                 - gray[(y + 1) * GRID + x - 1] + gray[(y + 1) * GRID + x + 1];
-        const gy = -gray[(y - 1) * GRID + x - 1] - 2 * gray[(y - 1) * GRID + x] - gray[(y - 1) * GRID + x + 1]
-                 + gray[(y + 1) * GRID + x - 1] + 2 * gray[(y + 1) * GRID + x] + gray[(y + 1) * GRID + x + 1];
+        blurred[y * GRID + x] = (
+          gray[(y - 1) * GRID + x - 1] + 2 * gray[(y - 1) * GRID + x] + gray[(y - 1) * GRID + x + 1] +
+          2 * gray[y * GRID + x - 1] + 4 * gray[y * GRID + x] + 2 * gray[y * GRID + x + 1] +
+          gray[(y + 1) * GRID + x - 1] + 2 * gray[(y + 1) * GRID + x] + gray[(y + 1) * GRID + x + 1]
+        ) / 16;
+      }
+    }
+    for (let y = 2; y < GRID - 2; y++) {
+      for (let x = 2; x < GRID - 2; x++) {
+        const gx = -blurred[(y - 1) * GRID + x - 1] + blurred[(y - 1) * GRID + x + 1]
+                 - 2 * blurred[y * GRID + x - 1] + 2 * blurred[y * GRID + x + 1]
+                 - blurred[(y + 1) * GRID + x - 1] + blurred[(y + 1) * GRID + x + 1];
+        const gy = -blurred[(y - 1) * GRID + x - 1] - 2 * blurred[(y - 1) * GRID + x] - blurred[(y - 1) * GRID + x + 1]
+                 + blurred[(y + 1) * GRID + x - 1] + 2 * blurred[(y + 1) * GRID + x] + blurred[(y + 1) * GRID + x + 1];
         const mag = Math.hypot(gx, gy);
-        motifMask[y * GRID + x] = mag > (255 - state.threshold) * 1.4 ? 1 : 0;
+        const edge = mag > (255 - state.threshold) * 1.25;
+        motifMask[y * GRID + x] = state.invert ? (edge ? 0 : 1) : (edge ? 1 : 0);
       }
     }
   } else {
@@ -810,11 +855,17 @@ function rebuildModel() {
     }
   }
 
-  // Dilatation for 0.4mm nozzle printability
+  // Rand freihalten fuer geschlossene Konturen
+  for (let y = 0; y < GRID; y++) {
+    for (let x = 0; x < GRID; x++) {
+      if (x < 4 || x >= GRID - 4 || y < 4 || y >= GRID - 4) motifMask[y * GRID + x] = 0;
+    }
+  }
+
   for (let d = 0; d < state.dilate; d++) {
     const next = new Uint8Array(motifMask);
-    for (let y = 1; y < GRID - 1; y++) {
-      for (let x = 1; x < GRID - 1; x++) {
+    for (let y = 4; y < GRID - 4; y++) {
+      for (let x = 4; x < GRID - 4; x++) {
         const i = y * GRID + x;
         if (motifMask[i]) {
           next[i - 1] = next[i + 1] = next[i - GRID] = next[i + GRID] = 1;
@@ -824,7 +875,6 @@ function rebuildModel() {
     motifMask = next;
   }
 
-  // Bounding box of motif
   let minX = GRID, maxX = 0, minY = GRID, maxY = 0;
   for (let y = 0; y < GRID; y++) {
     for (let x = 0; x < GRID; x++) {
@@ -836,13 +886,15 @@ function rebuildModel() {
       }
     }
   }
-  if (maxX <= minX || maxY <= minY) return;
+  if (maxX <= minX || maxY <= minY) {
+    document.getElementById('infoBox').innerHTML = '<span class="warn">Kein Motiv erkannt - Schwellenwert anpassen oder Modus wechseln.</span>';
+    return;
+  }
 
   const spanPx = Math.max(maxX - minX, maxY - minY);
   const mmPerPx = state.sizeMm / (spanPx + 24);
-  const marginPx = state.marginMm / mmPerPx;
+  const marginPx = Math.min(28, state.marginMm / mmPerPx);
 
-  // Flood fill background to get solid silhouette for outer contour
   const bg = new Uint8Array(GRID * GRID);
   const q = [0];
   bg[0] = 1;
@@ -871,11 +923,15 @@ function rebuildModel() {
 
   const holeRpx = (state.holeMm * 0.5) / mmPerPx;
   const eyeletOuterR = holeRpx + (2.4 / mmPerPx);
-  const eyeletX = cx + (state.holeX / 100) * (maxX - minX);
-  const eyeletY = minY - marginPx * 0.7 - holeRpx * 0.3;
+  const eyeletX = Math.max(eyeletOuterR + 4, Math.min(GRID - eyeletOuterR - 4, cx + (state.holeX / 100) * (maxX - minX)));
+  const eyeletY = Math.max(eyeletOuterR + 4, minY - marginPx * 0.7 - holeRpx * 0.3);
 
   for (let y = 0; y < GRID; y++) {
     for (let x = 0; x < GRID; x++) {
+      if (x <= 1 || x >= GRID - 2 || y <= 1 || y >= GRID - 2) {
+        outerSdf[y * GRID + x] = 10;
+        continue;
+      }
       let dBody;
       if (state.shapeMode === 'plaque') {
         const qx = Math.abs(x - cx) - (hw - cornerR);
@@ -894,21 +950,22 @@ function rebuildModel() {
 
   const toMm = (p) => [(p[0] - cx) * mmPerPx, -(p[1] - cy) * mmPerPx];
 
-  // Outer contour vectorization
   const rawOuter = marchingSquares(outerSdf, GRID, GRID, 0);
   const smoothOuter = rawOuter
-    .map(l => chaikinClosed(rdp(l, 0.7), state.smoothIter).map(toMm))
+    .map(l => chaikinClosed(rdpClosed(l, 0.7), state.smoothIter).map(toMm))
+    .filter(l => l.length >= 3)
     .sort((a, b) => Math.abs(polygonArea(b)) - Math.abs(polygonArea(a)));
 
   if (!smoothOuter.length) return;
   const mainOuter = smoothOuter[0];
 
-  // 64-segment mathematical eyelet hole
   const baseHoles = [];
+  let holeCenterMm = null;
   if (state.holeMm > 0) {
     const holeLoop = [];
     const hx = (eyeletX - cx) * mmPerPx;
     const hy = -(eyeletY - cy) * mmPerPx;
+    holeCenterMm = [hx, hy];
     const hr = state.holeMm * 0.5;
     for (let i = 0; i < 64; i++) {
       const a = (i / 64) * Math.PI * 2;
@@ -917,13 +974,18 @@ function rebuildModel() {
     baseHoles.push(holeLoop);
   }
 
-  // Motif vectorization via SDF for smooth subpixel contours
   const motifSdf = computeSDF(motifMask, GRID, GRID);
+  for (let y = 0; y < GRID; y++) {
+    for (let x = 0; x < GRID; x++) {
+      if (x <= 1 || x >= GRID - 2 || y <= 1 || y >= GRID - 2) motifSdf[y * GRID + x] = 10;
+    }
+  }
   const rawMotif = marchingSquares(motifSdf, GRID, GRID, 0.35);
-  const smoothMotif = rawMotif.map(l => chaikinClosed(rdp(l, 0.55), Math.max(1, state.smoothIter - 1)).map(toMm));
+  const smoothMotif = rawMotif
+    .map(l => chaikinClosed(rdpClosed(l, 0.55), Math.max(1, state.smoothIter - 1)).map(toMm))
+    .filter(l => l.length >= 3);
   const motifShapes = groupContoursToShapes(smoothMotif);
 
-  // Build 3D Geometry (100% flat bottom at Z = 0)
   while (modelGroup.children.length) modelGroup.remove(modelGroup.children[0]);
   if (baseGeo) baseGeo.dispose();
   if (motifGeo) motifGeo.dispose();
@@ -934,8 +996,18 @@ function rebuildModel() {
   } else {
     const lowerH = Math.max(0.6, state.baseH - state.reliefH);
     baseGeo = extrudePolygons([{ outer: mainOuter, holes: baseHoles }], 0, lowerH);
-    const upperHoles = baseHoles.concat(motifShapes.map(s => s.outer));
-    motifGeo = extrudePolygons([{ outer: mainOuter, holes: upperHoles }], lowerH, state.baseH);
+    const safeMotifHoles = motifShapes
+      .map(s => s.outer)
+      .filter(loop => isLoopSafeHole(loop, mainOuter, holeCenterMm, state.holeMm * 0.5));
+    const upperShapes = [{ outer: mainOuter, holes: baseHoles.concat(safeMotifHoles) }];
+    motifShapes.forEach(s => {
+      s.holes.forEach(island => {
+        if (isLoopSafeHole(island, mainOuter, holeCenterMm, state.holeMm * 0.5)) {
+          upperShapes.push({ outer: island, holes: [] });
+        }
+      });
+    });
+    motifGeo = extrudePolygons(upperShapes, lowerH, state.baseH);
   }
 
   const matBase = new THREE.MeshStandardMaterial({
@@ -951,7 +1023,6 @@ function rebuildModel() {
   motifMesh.castShadow = true; motifMesh.receiveShadow = true;
   modelGroup.add(baseMesh, motifMesh);
 
-  // Compute physical dimensions & slicer metadata
   baseGeo.computeBoundingBox();
   const bb = baseGeo.boundingBox;
   const dimX = (bb.max.x - bb.min.x).toFixed(1);
@@ -1083,22 +1154,29 @@ document.getElementById('invertBtn').addEventListener('click', e => {
   rebuildModel();
 });
 
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+
 document.querySelectorAll('[data-tpl]').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('[data-tpl]').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     state.template = btn.dataset.tpl;
     state.image = null;
+    dropzone.textContent = 'Bild hier ablegen oder klicken (PNG, JPG, WebP, SVG)';
     rebuildModel();
   });
 });
 
-const dropzone = document.getElementById('dropzone');
-const fileInput = document.getElementById('fileInput');
 const loadFile = (file) => {
   if (!file) return;
   const img = new Image();
-  img.onload = () => { state.image = img; rebuildModel(); };
+  img.onload = () => {
+    state.image = img;
+    document.querySelectorAll('[data-tpl]').forEach(b => b.classList.remove('active'));
+    dropzone.textContent = `Geladen: ${file.name}`;
+    rebuildModel();
+  };
   img.src = URL.createObjectURL(file);
 };
 dropzone.addEventListener('click', () => fileInput.click());
